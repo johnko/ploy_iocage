@@ -10,8 +10,11 @@ _name                           _tag
 name                            tag
 ezjail                          iocage
 ez-                             ioc-
-flavour                         template
 EzjailError                     IocageError
 EzjailProxyInstance             IocageProxyInstance
+
+# Not sure
+
+flavour                         template / package
 create
 console -e                      ?
