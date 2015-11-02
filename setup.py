@@ -7,18 +7,18 @@ README = open(os.path.join(here, 'README.rst')).read()
 HISTORY = open(os.path.join(here, 'HISTORY.rst')).read()
 
 
-version = "1.5.0dev"
+version = "0.1.0dev"
 
 
 setup(
     version=version,
-    description="Plugin for ploy to provision FreeBSD jails using ezjail.",
+    description="Plugin for ploy to provision FreeBSD jails using iocage.",
     long_description=README + "\n\n" + HISTORY,
-    name="ploy_ezjail",
-    author='Florian Schulze',
+    name="ploy_iocage",
+    author='Florian Schulze and John Ko',
     author_email='florian.schulze@gmx.net',
     license="BSD 3-Clause License",
-    url='http://github.com/ployground/ploy_ezjail',
+    url='http://github.com/johnko/ploy_iocage',
     classifiers=[
         'Environment :: Console',
         'Intended Audience :: System Administrators',
@@ -29,12 +29,12 @@ setup(
         'Topic :: System :: Systems Administration'],
     include_package_data=True,
     zip_safe=False,
-    packages=['ploy_ezjail'],
+    packages=['ploy_iocage'],
     install_requires=[
         'setuptools',
         'ploy >= 1.2.0, < 2dev',
         'lazy'],
     entry_points="""
         [ploy.plugins]
-        ezjail = ploy_ezjail:plugin
+        iocage = ploy_iocage:plugin
     """)

@@ -10,10 +10,10 @@ import sys
 import time
 
 
-log = logging.getLogger('ploy_ezjail')
+log = logging.getLogger('ploy_iocage')
 
 
-class EzjailError(Exception):
+class IocageError(Exception):
     pass
 
 
@@ -46,17 +46,17 @@ run_rc_command "$1"
 
 
 class Instance(PlainInstance, StartupScriptMixin):
-    sectiongroupname = 'ez-instance'
+    sectiongroupname = 'ioc-instance'
 
     _id_regexp = re.compile('^[a-zA-Z0-9_]+$')
 
     @property
-    def _name(self):
-        return self.config.get('ezjail-name', self.id)
+    def _tag(self):
+        return self.config.get('iocage-tag', self.id)
 
     def validate_id(self, sid):
         if self._id_regexp.match(sid) is None:
-            log.error("Invalid instance name '%s'. An ezjail instance name may only contain letters, numbers and underscores." % sid)
+            log.error("Invalid instance tag '%s'. An iocage instance tag may only contain letters, numbers and underscores." % sid)
             sys.exit(1)
         return sid
 
@@ -71,7 +71,7 @@ class Instance(PlainInstance, StartupScriptMixin):
         if status != 'running':
             log.info("Instance state: %s", status)
             sys.exit(1)
-        rc, out, err = self.master.ezjail_admin('console', name=self._name, cmd='ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub')
+        rc, out, err = self.master.iocage_admin('console', tag=self._tag, cmd='ssh-keygen -lf /etc/ssh/ssh_host_rsa_key.pub')
         info = out.split()
         return info[1]
 
@@ -95,23 +95,23 @@ class Instance(PlainInstance, StartupScriptMixin):
 
     def _status(self, jails=None):
         if jails is None:
-            jails = self.master.ezjail_admin('list')
-        if self._name not in jails:
+            jails = self.master.iocage_admin('list')
+        if self._tag not in jails:
             return 'unavailable'
-        jail = jails[self._name]
+        jail = jails[self._tag]
         status = jail['status']
         if len(status) != 2 or status[0] not in 'DIEBZ' or status[1] not in 'RAS':
-            raise EzjailError("Invalid jail status '%s' for '%s'" % (status, self._name))
+            raise IocageError("Invalid jail status '%s' for '%s'" % (status, self._tag))
         if status[1] == 'R':
             return 'running'
         elif status[1] == 'S':
             return 'stopped'
-        raise EzjailError("Don't know how to handle mounted but not running jail '%s'" % self._name)
+        raise IocageError("Don't know how to handle mounted but not running jail '%s'" % self._tag)
 
     def status(self):
         try:
-            jails = self.master.ezjail_admin('list')
-        except EzjailError as e:
+            jails = self.master.iocage_admin('list')
+        except IocageError as e:
             log.error("Can't get status of jails: %s", e)
             return
         status = self._status(jails)
@@ -122,13 +122,13 @@ class Instance(PlainInstance, StartupScriptMixin):
             log.info("Instance state: %s", status)
             return
         log.info("Instance running.")
-        log.info("Instances jail id: %s" % jails[self._name]['jid'])
-        if self._name != self.id:
-            log.info("Instances jail name: %s" % self._name)
-        log.info("Instances jail ip: %s" % jails[self._name]['ip'])
+        log.info("Instances jail id: %s" % jails[self._tag]['jid'])
+        if self._tag != self.id:
+            log.info("Instances jail tag: %s" % self._tag)
+        log.info("Instances jail ip: %s" % jails[self._tag]['ip'])
 
     def start(self, overrides=None):
-        jails = self.master.ezjail_admin('list')
+        jails = self.master.iocage_admin('list')
         status = self._status(jails)
         startup_script = None
         if status == 'unavailable':
@@ -138,17 +138,17 @@ class Instance(PlainInstance, StartupScriptMixin):
                 log.error("No IP address set for instance '%s'", self.id)
                 sys.exit(1)
             try:
-                self.master.ezjail_admin(
+                self.master.iocage_admin(
                     'create',
-                    name=self._name,
+                    tag=self._tag,
                     ip=self.config['ip'],
                     flavour=self.config.get('flavour'))
-            except EzjailError as e:
+            except IocageError as e:
                 for line in e.args[0].splitlines():
                     log.error(line)
                 sys.exit(1)
-            jails = self.master.ezjail_admin('list')
-            jail = jails.get(self._name)
+            jails = self.master.iocage_admin('list')
+            jail = jails.get(self._tag)
             startup_dest = '%s/etc/startup_script' % jail['root']
             rc, out, err = self.master._exec(
                 'sh', '-c', 'cat - > "%s"' % startup_dest,
@@ -181,32 +181,13 @@ class Instance(PlainInstance, StartupScriptMixin):
             log.info("Instance already started")
             return True
 
-        rc_provide = self.config.get('rc_provide', '')
-        self.master._exec(
-            "sed",
-            "-i",
-            "",
-            "-e",
-            "s/\# PROVIDE:.*$/\# PROVIDE: standard_ezjail %s %s/" % (self._name, rc_provide),
-            "/usr/local/etc/ezjail/%s" % self._name)
-
-        rc_require = self.config.get('rc_require')
-        if rc_require is not None:
-            self.master._exec(
-                "sed",
-                "-i",
-                "",
-                "-e",
-                "s/\# REQUIRE:.*$/\# REQUIRE: %s/" % rc_require,
-                "/usr/local/etc/ezjail/%s" % self._name)
-
         mounts = []
         for mount in self.config.get('mounts', []):
             src = mount['src'].format(
                 zfs=self.master.zfs,
-                name=self._name)
+                tag=self._tag)
             dst = mount['dst'].format(
-                name=self._name)
+                tag=self._tag)
             create_mount = mount.get('create', False)
             mounts.append(dict(src=src, dst=dst, ro=mount.get('ro', False)))
             if create_mount:
@@ -216,8 +197,8 @@ class Instance(PlainInstance, StartupScriptMixin):
                     log.error(err)
                     sys.exit(1)
         if mounts:
-            jail = jails.get(self._name)
-            jail_fstab = '/etc/fstab.%s' % self._name
+            jail = jails.get(self._tag)
+            jail_fstab = '/etc/fstab.%s' % self._tag
             jail_root = jail['root'].rstrip('/')
             log.info("Setting up mount points")
             rc, out, err = self.master._exec("head", "-n", "1", jail_fstab)
@@ -241,10 +222,10 @@ class Instance(PlainInstance, StartupScriptMixin):
         else:
             log.info("Starting instance '%s'", self.id)
         try:
-            self.master.ezjail_admin(
+            self.master.iocage_admin(
                 'start',
-                name=self._name)
-        except EzjailError as e:
+                tag=self._tag)
+        except IocageError as e:
             for line in e.args[0].splitlines():
                 log.error(line)
             sys.exit(1)
@@ -259,11 +240,11 @@ class Instance(PlainInstance, StartupScriptMixin):
             log.info("Instance not stopped")
             return
         log.info("Stopping instance '%s'", self.id)
-        self.master.ezjail_admin('stop', name=self._name)
+        self.master.iocage_admin('stop', tag=self._tag)
         log.info("Instance stopped")
 
     def terminate(self):
-        jails = self.master.ezjail_admin('list')
+        jails = self.master.iocage_admin('list')
         status = self._status(jails)
         if self.config.get('no-terminate', False):
             log.error("Instance '%s' is configured not to be terminated.", self.id)
@@ -273,24 +254,24 @@ class Instance(PlainInstance, StartupScriptMixin):
             return
         if status == 'running':
             log.info("Stopping instance '%s'", self.id)
-            self.master.ezjail_admin('stop', name=self._name)
+            self.master.iocage_admin('stop', tag=self._tag)
         if status != 'stopped':
             log.info('Waiting for jail to stop')
             while status != 'stopped':
-                jails = self.master.ezjail_admin('list')
+                jails = self.master.iocage_admin('list')
                 status = self._status(jails)
                 sys.stdout.write('.')
                 sys.stdout.flush()
                 time.sleep(1)
             print
         log.info("Terminating instance '%s'", self.id)
-        self.master.ezjail_admin('delete', name=self._name)
+        self.master.iocage_admin('destroy', tag=self._tag)
         log.info("Instance terminated")
 
 
 class ZFS_FS(object):
-    def __init__(self, zfs, name, config):
-        self._name = name
+    def __init__(self, zfs, tag, config):
+        self._tag = tag
         self.zfs = zfs
         self.config = config
         mp_args = (
@@ -308,7 +289,7 @@ class ZFS_FS(object):
             if rc != 0:
                 log.error(
                     "Couldn't create zfs filesystem '%s' at '%s'." % (
-                        self._name, self['path']))
+                        self._tag, self['path']))
                 log.error(err)
                 sys.exit(1)
         rc, out, err = self.zfs.master._exec(*mp_args)
@@ -319,7 +300,7 @@ class ZFS_FS(object):
             return
         log.error(
             "Trying to use non existing zfs filesystem '%s' at '%s'." % (
-                self._name, self['path']))
+                self._tag, self['path']))
         sys.exit(1)
 
     def __getitem__(self, key):
@@ -335,7 +316,7 @@ class ZFS_FS(object):
 class ZFS(object):
     def __init__(self, master):
         self.master = master
-        self.config = self.master.main_config.get('ez-zfs', {})
+        self.config = self.master.main_config.get('ioc-zfs', {})
         self._cache = {}
 
     def __getitem__(self, key):
@@ -344,7 +325,7 @@ class ZFS(object):
         return self._cache[key]
 
 
-class EzjailProxyInstance(ProxyInstance):
+class IocageProxyInstance(ProxyInstance):
     def status(self):
         result = None
         hasstatus = hasattr(self._proxied_instance, 'status')
@@ -352,8 +333,8 @@ class EzjailProxyInstance(ProxyInstance):
             result = self._proxied_instance.status()
         if not hasstatus or self._status() == 'running':
             try:
-                jails = self.master.ezjail_admin('list')
-            except EzjailError as e:
+                jails = self.master.iocage_admin('list')
+            except IocageError as e:
                 log.error("Can't get status of jails: %s", e)
                 return result
             unknown = set(jails)
@@ -361,10 +342,10 @@ class EzjailProxyInstance(ProxyInstance):
                 if sid == self.id:
                     continue
                 instance = self.master.instances[sid]
-                unknown.remove(instance._name)
+                unknown.remove(instance._tag)
                 status = instance._status(jails)
                 sip = instance.config.get('ip', '')
-                jip = jails.get(instance._name, {}).get('ip', 'unknown ip')
+                jip = jails.get(instance._tag, {}).get('ip', 'unknown ip')
                 if status == 'running' and jip != sip:
                     sip = "%s != configured %s" % (jip, sip)
                 log.info("%-20s %-15s %15s" % (sid, status, sip))
@@ -375,7 +356,7 @@ class EzjailProxyInstance(ProxyInstance):
 
 
 class Master(BaseMaster):
-    sectiongroupname = 'ez-instance'
+    sectiongroupname = 'ioc-instance'
     instance_class = Instance
     _exec = None
 
@@ -387,8 +368,8 @@ class Master(BaseMaster):
         else:
             instance = self.master_config['instance']
         if instance:
-            self.instance = EzjailProxyInstance(self, self.id, self.master_config, instance)
-            self.instance.sectiongroupname = 'ez-master'
+            self.instance = IocageProxyInstance(self, self.id, self.master_config, instance)
+            self.instance.sectiongroupname = 'ioc-master'
             self.instances[self.id] = self.instance
         else:
             self.instance = None
@@ -404,24 +385,24 @@ class Master(BaseMaster):
         return ZFS(self)
 
     @lazy
-    def ezjail_admin_binary(self):
-        binary = self.master_config.get('ezjail-admin', '/usr/local/bin/ezjail-admin')
+    def iocage_admin_binary(self):
+        binary = self.master_config.get('iocage', '/usr/local/sbin/iocage')
         return binary
 
-    def _ezjail_admin(self, *args):
+    def _iocage_admin(self, *args):
         try:
-            return self._exec(self.ezjail_admin_binary, *args)
+            return self._exec(self.iocage_admin_binary, *args)
         except socket.error as e:
-            raise EzjailError("Couldn't connect to instance [%s]:\n%s" % (self.instance.config_id, e))
+            raise IocageError("Couldn't connect to instance [%s]:\n%s" % (self.instance.config_id, e))
 
     @lazy
-    def ezjail_admin_list_headers(self):
-        rc, out, err = self._ezjail_admin('list')
+    def iocage_admin_list_headers(self):
+        rc, out, err = self._iocage_admin('list')
         if rc:
-            raise EzjailError(err.strip())
+            raise IocageError(err.strip())
         lines = out.splitlines()
         if len(lines) < 2:
-            raise EzjailError("ezjail-admin list output too short:\n%s" % out.strip())
+            raise IocageError("iocage list output too short:\n%s" % out.strip())
         headers = []
         current = ""
         for i, c in enumerate(lines[1]):
@@ -433,10 +414,10 @@ class Master(BaseMaster):
             else:
                 current = current + lines[0][i]
         if headers != ['STA', 'JID', 'IP', 'Hostname', 'Root Directory']:
-            raise EzjailError("ezjail-admin list output has unknown headers:\n%s" % headers)
-        return ('status', 'jid', 'ip', 'name', 'root')
+            raise IocageError("iocage list output has unknown headers:\n%s" % headers)
+        return ('status', 'jid', 'ip', 'tag', 'root')
 
-    def ezjail_admin(self, command, **kwargs):
+    def iocage_admin(self, command, **kwargs):
         # make sure there is no whitespace in the arguments
         for k, v in kwargs.items():
             if v is None:
@@ -447,11 +428,11 @@ class Master(BaseMaster):
                 log.error("The value '%s' of kwarg '%s' contains whitespace", v, k)
                 sys.exit(1)
         if command == 'console':
-            return self._ezjail_admin(
+            return self._iocage_admin(
                 'console',
                 '-e',
                 kwargs['cmd'],
-                kwargs['name'])
+                kwargs['tag'])
         elif command == 'create':
             args = [
                 'create',
@@ -460,46 +441,46 @@ class Master(BaseMaster):
             if flavour is not None:
                 args.extend(['-f', flavour])
             args.extend([
-                kwargs['name'],
+                kwargs['tag'],
                 kwargs['ip']])
-            rc, out, err = self._ezjail_admin(*args)
+            rc, out, err = self._iocage_admin(*args)
             if rc:
-                raise EzjailError(err.strip())
-        elif command == 'delete':
-            rc, out, err = self._ezjail_admin(
-                'delete',
-                '-fw',
-                kwargs['name'])
+                raise IocageError(err.strip())
+        elif command == 'destroy':
+            rc, out, err = self._iocage_admin(
+                'destroy',
+                '-f',
+                kwargs['tag'])
             if rc:
-                raise EzjailError(err.strip())
+                raise IocageError(err.strip())
         elif command == 'list':
-            rc, out, err = self._ezjail_admin('list')
+            rc, out, err = self._iocage_admin('list')
             if rc:
-                raise EzjailError(err.strip())
+                raise IocageError(err.strip())
             lines = out.splitlines()
             if len(lines) < 2:
-                raise EzjailError("ezjail-admin list output too short:\n%s" % out.strip())
-            headers = self.ezjail_admin_list_headers
+                raise IocageError("iocage list output too short:\n%s" % out.strip())
+            headers = self.iocage_admin_list_headers
             jails = {}
             for line in lines[2:]:
                 line = line.strip()
                 if not line:
                     continue
                 entry = dict(zip(headers, line.split()))
-                jails[entry.pop('name')] = entry
+                jails[entry.pop('tag')] = entry
             return jails
         elif command == 'start':
-            rc, out, err = self._ezjail_admin(
+            rc, out, err = self._iocage_admin(
                 'start',
-                kwargs['name'])
+                kwargs['tag'])
             if rc:
-                raise EzjailError(err.strip())
+                raise IocageError(err.strip())
         elif command == 'stop':
-            rc, out, err = self._ezjail_admin(
+            rc, out, err = self._iocage_admin(
                 'stop',
-                kwargs['name'])
+                kwargs['tag'])
             if rc:
-                raise EzjailError(err.strip())
+                raise IocageError(err.strip())
         else:
             raise ValueError("Unknown command '%s'" % command)
 
@@ -542,8 +523,8 @@ def get_instance_massagers(sectiongroupname='instance'):
 
     massagers = []
 
-    for klass, name in get_common_massagers():
-        massagers.append(klass(sectiongroupname, name))
+    for klass, tag in get_common_massagers():
+        massagers.append(klass(sectiongroupname, tag))
     massagers.extend([
         MountsMassager(sectiongroupname, 'mounts'),
         BooleanMassager(sectiongroupname, 'no-terminate'),
@@ -556,17 +537,17 @@ def get_massagers():
 
     massagers = []
 
-    sectiongroupname = 'ez-instance'
+    sectiongroupname = 'ioc-instance'
     massagers.extend(get_instance_massagers(sectiongroupname))
 
-    sectiongroupname = 'ez-master'
-    for klass, name in get_common_massagers():
-        massagers.append(klass(sectiongroupname, name))
+    sectiongroupname = 'ioc-master'
+    for klass, tag in get_common_massagers():
+        massagers.append(klass(sectiongroupname, tag))
     massagers.extend([
         BooleanMassager(sectiongroupname, 'sudo'),
         BooleanMassager(sectiongroupname, 'debug-commands')])
 
-    sectiongroupname = 'ez-zfs'
+    sectiongroupname = 'ioc-zfs'
     massagers.extend([
         BooleanMassager(sectiongroupname, 'create')])
 
@@ -574,7 +555,7 @@ def get_massagers():
 
 
 def get_masters(ploy):
-    masters = ploy.config.get('ez-master', {})
+    masters = ploy.config.get('ioc-master', {})
     for master, master_config in masters.items():
         yield Master(ploy, master, master_config)
 

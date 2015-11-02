@@ -1,0 +1,17 @@
+# Converting from ezjail to iocage
+
+ezjail_admin                    iocage_admin
+/usr/local/bin/ezjail-admin     /usr/local/sbin/iocage
+delete -fw                      destroy -f
+ezjail-admin                    iocage
+ezjail-name                     iocage-tag
+ezjail_name                     iocage_tag
+_name                           _tag
+name                            tag
+ezjail                          iocage
+ez-                             ioc-
+flavour                         template
+EzjailError                     IocageError
+EzjailProxyInstance             IocageProxyInstance
+create
+console -e                      ?

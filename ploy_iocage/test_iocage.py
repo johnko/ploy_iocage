@@ -9,7 +9,7 @@ import logging
 import pytest
 
 
-log = logging.getLogger('ploy_ezjail_tests')
+log = logging.getLogger('ploy_iocage_tests')
 
 
 class DummyPlugin(object):
@@ -21,7 +21,7 @@ class DummyPlugin(object):
 
 
 def test_mounts_massager_invalid_option():
-    from ploy_ezjail import MountsMassager
+    from ploy_iocage import MountsMassager
     dummyplugin = DummyPlugin()
     plugins = dict(
         dummy=dict(
@@ -37,7 +37,7 @@ def test_mounts_massager_invalid_option():
 
 
 def test_mounts_massager():
-    from ploy_ezjail import MountsMassager
+    from ploy_iocage import MountsMassager
     dummyplugin = DummyPlugin()
     plugins = dict(
         dummy=dict(
@@ -57,29 +57,29 @@ def test_mounts_massager():
 
 
 @pytest.fixture(params=['foo', 'bar'])
-def ezjail_name(request):
+def iocage_tag(request):
     return request.param
 
 
 @pytest.fixture
-def ctrl(ployconf, ezjail_name):
+def ctrl(ployconf, iocage_tag):
     from ploy import Controller
-    import ploy_ezjail
+    import ploy_iocage
     lines = [
-        '[ez-master:warden]',
-        '[ez-instance:foo]',
+        '[ioc-master:warden]',
+        '[ioc-instance:foo]',
         'ip = 10.0.0.1']
-    if ezjail_name is not 'foo':
-        lines.append('ezjail-name = %s' % ezjail_name)
+    if iocage_tag is not 'foo':
+        lines.append('iocage-tag = %s' % iocage_tag)
     ployconf.fill(lines)
     ctrl = Controller(configpath=ployconf.directory)
-    ctrl.plugins = {'ezjail': ploy_ezjail.plugin}
+    ctrl.plugins = {'iocage': ploy_iocage.plugin}
     return ctrl
 
 
 @pytest.fixture(autouse=True)
 def _exec(monkeypatch):
-    from ploy_ezjail import Master
+    from ploy_iocage import Master
     # always fail if _exec is called
     monkeypatch.setattr(Master, '_exec', lambda *a, **k: 0 / 0)
 
@@ -92,7 +92,7 @@ class MasterExec:
     def __call__(self, *cmd_args, **kw):
         stdin = kw.get('stdin')
         cmd = shjoin(cmd_args)
-        log.debug('ezjail %r stdin=%r', cmd, stdin)
+        log.debug('iocage %r stdin=%r', cmd, stdin)
         try:
             expected = self.expect.pop(0)
         except IndexError:  # pragma: no cover - only on failures
@@ -106,13 +106,13 @@ class MasterExec:
 
 @pytest.fixture
 def master_exec(monkeypatch):
-    from ploy_ezjail import Master
+    from ploy_iocage import Master
     me = MasterExec()
     monkeypatch.setattr(Master, '_exec', me)
     return me
 
 
-def ezjail_list(*jails):
+def iocage_list(*jails):
     lines = [
         'STA JID  IP              Hostname                       Root Directory',
         '--- ---- --------------- ------------------------------ ------------------------']
@@ -140,24 +140,23 @@ def caplog_messages(caplog, level=logging.INFO):
         if x.levelno >= level]
 
 
-def test_start(ctrl, ezjail_name, master_exec, caplog):
+def test_start(ctrl, iocage_tag, master_exec, caplog):
     master_exec.expect = [
-        ('/usr/local/bin/ezjail-admin list', 0, ezjail_list(), ''),
-        ('/usr/local/bin/ezjail-admin list', 0, ezjail_list(), ''),
-        ('/usr/local/bin/ezjail-admin create -c zfs %s 10.0.0.1' % ezjail_name, 0, '', ''),
-        ('/usr/local/bin/ezjail-admin list', 0, ezjail_list({'name': ezjail_name, 'ip': '10.0.0.1', 'status': 'ZS'}), ''),
-        ("""sh -c 'cat - > "/usr/jails/%s/etc/startup_script"'""" % ezjail_name, 0, '', ''),
-        ('chmod 0700 /usr/jails/%s/etc/startup_script' % ezjail_name, 0, '', ''),
-        ("""sh -c 'cat - > "/usr/jails/%s/etc/rc.d/ploy.startup_script"'""" % ezjail_name, 0, '', ''),
-        ('chmod 0700 /usr/jails/%s/etc/rc.d/ploy.startup_script' % ezjail_name, 0, '', ''),
-        ("""sed -i '' -e 's/\# PROVIDE:.*$/\# PROVIDE: standard_ezjail %s /' /usr/local/etc/ezjail/%s""" % (ezjail_name, ezjail_name), 0, '', ''),
-        ('/usr/local/bin/ezjail-admin start %s' % ezjail_name, 0, '', '')]
+        ('/usr/local/sbin/iocage list', 0, iocage_list(), ''),
+        ('/usr/local/sbin/iocage list', 0, iocage_list(), ''),
+        ('/usr/local/sbin/iocage create %s 10.0.0.1' % iocage_tag, 0, '', ''),
+        ('/usr/local/sbin/iocage list', 0, iocage_list({'name': iocage_tag, 'ip': '10.0.0.1', 'status': 'ZS'}), ''),
+        ("""sh -c 'cat - > "/usr/jails/%s/etc/startup_script"'""" % iocage_tag, 0, '', ''),
+        ('chmod 0700 /usr/jails/%s/etc/startup_script' % iocage_tag, 0, '', ''),
+        ("""sh -c 'cat - > "/usr/jails/%s/etc/rc.d/ploy.startup_script"'""" % iocage_tag, 0, '', ''),
+        ('chmod 0700 /usr/jails/%s/etc/rc.d/ploy.startup_script' % iocage_tag, 0, '', ''),
+        ('/usr/local/sbin/iocage start %s' % iocage_tag, 0, '', '')]
     ctrl(['./bin/ploy', 'start', 'foo'])
     assert master_exec.expect == []
     assert len(master_exec.got) == 2
-    assert master_exec.got[0][0] == """sh -c 'cat - > "/usr/jails/%s/etc/startup_script"'""" % ezjail_name
+    assert master_exec.got[0][0] == """sh -c 'cat - > "/usr/jails/%s/etc/startup_script"'""" % iocage_tag
     assert master_exec.got[0][1] == ''
-    assert master_exec.got[1][0] == """sh -c 'cat - > "/usr/jails/%s/etc/rc.d/ploy.startup_script"'""" % ezjail_name
+    assert master_exec.got[1][0] == """sh -c 'cat - > "/usr/jails/%s/etc/rc.d/ploy.startup_script"'""" % iocage_tag
     assert 'PROVIDE: ploy.startup_script' in master_exec.got[1][1]
     assert caplog_messages(caplog) == [
         "Creating instance 'foo'",
