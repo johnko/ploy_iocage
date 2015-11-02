@@ -127,7 +127,7 @@ def iocage_list(*jails):
         jid = "%d    " % jail.get('jid', fake_id)
         ip = "%s               " % jail.get('ip', "10.0.0.%d" % fake_id)
         hostname = "%s                              " % name
-        root = "/usr/jails/%s" % name
+        root = "/iocage/jails/%s" % name
         lines.append('%s %s %s %s %s' % (
             status[:3], jid[:4], ip[:15], hostname[:30], root))
     return '\n'.join(lines)
@@ -146,17 +146,17 @@ def test_start(ctrl, iocage_tag, master_exec, caplog):
         ('/usr/local/sbin/iocage list', 0, iocage_list(), ''),
         ('/usr/local/sbin/iocage create %s 10.0.0.1' % iocage_tag, 0, '', ''),
         ('/usr/local/sbin/iocage list', 0, iocage_list({'name': iocage_tag, 'ip': '10.0.0.1', 'status': 'ZS'}), ''),
-        ("""sh -c 'cat - > "/usr/jails/%s/etc/startup_script"'""" % iocage_tag, 0, '', ''),
-        ('chmod 0700 /usr/jails/%s/etc/startup_script' % iocage_tag, 0, '', ''),
-        ("""sh -c 'cat - > "/usr/jails/%s/etc/rc.d/ploy.startup_script"'""" % iocage_tag, 0, '', ''),
-        ('chmod 0700 /usr/jails/%s/etc/rc.d/ploy.startup_script' % iocage_tag, 0, '', ''),
+        ("""sh -c 'cat - > "/iocage/jails/%s/root/etc/startup_script"'""" % iocage_tag, 0, '', ''),
+        ('chmod 0700 /iocage/jails/%s/root/etc/startup_script' % iocage_tag, 0, '', ''),
+        ("""sh -c 'cat - > "/iocage/jails/%s/root/etc/rc.d/ploy.startup_script"'""" % iocage_tag, 0, '', ''),
+        ('chmod 0700 /iocage/jails/%s/root/etc/rc.d/ploy.startup_script' % iocage_tag, 0, '', ''),
         ('/usr/local/sbin/iocage start %s' % iocage_tag, 0, '', '')]
     ctrl(['./bin/ploy', 'start', 'foo'])
     assert master_exec.expect == []
     assert len(master_exec.got) == 2
-    assert master_exec.got[0][0] == """sh -c 'cat - > "/usr/jails/%s/etc/startup_script"'""" % iocage_tag
+    assert master_exec.got[0][0] == """sh -c 'cat - > "/iocage/jails/%s/root/etc/startup_script"'""" % iocage_tag
     assert master_exec.got[0][1] == ''
-    assert master_exec.got[1][0] == """sh -c 'cat - > "/usr/jails/%s/etc/rc.d/ploy.startup_script"'""" % iocage_tag
+    assert master_exec.got[1][0] == """sh -c 'cat - > "/iocage/jails/%s/root/etc/rc.d/ploy.startup_script"'""" % iocage_tag
     assert 'PROVIDE: ploy.startup_script' in master_exec.got[1][1]
     assert caplog_messages(caplog) == [
         "Creating instance 'foo'",

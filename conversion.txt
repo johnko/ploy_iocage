@@ -12,6 +12,7 @@ ezjail                          iocage
 ez-                             ioc-
 EzjailError                     IocageError
 EzjailProxyInstance             IocageProxyInstance
+/usr/jails/%s                   /iocage/jails/%s/root
 
 # Not sure
 
