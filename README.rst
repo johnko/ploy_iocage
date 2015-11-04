@@ -65,8 +65,8 @@ Options
   The ip address to use for the jail.
   **Required**
 
-``template``
-  The **flavour** to use for this jail.
+``jailtype``
+  The **jailtype** to use for this jail. (-b, -c, -e) See the `iocage(8)` man pages for more info.
 
 ``iocage-tag``
   The **tag** to use for the jail. By default the id of the instance is used.

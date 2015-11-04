@@ -142,7 +142,7 @@ class Instance(PlainInstance, StartupScriptMixin):
                     'create',
                     tag=self._tag,
                     ip=self.config['ip'],
-                    flavour=self.config.get('flavour'))
+                    jailtype=self.config.get('jailtype'))
             except IocageError as e:
                 for line in e.args[0].splitlines():
                     log.error(line)
@@ -430,19 +430,16 @@ class Master(BaseMaster):
         if command == 'console':
             return self._iocage_admin(
                 'console',
-                '-e',
-                kwargs['cmd'],
                 kwargs['tag'])
         elif command == 'create':
             args = [
-                'create',
-                '-c', 'zfs']
-            flavour = kwargs.get('flavour')
-            if flavour is not None:
-                args.extend(['-f', flavour])
+                'create']
+            jailtype = kwargs.get('jailtype')
+            if jailtype is not None:
+                args.extend([jailtype])
             args.extend([
-                kwargs['tag'],
-                kwargs['ip']])
+                'tag='+kwargs['tag'],
+                'ip4_addr="'+kwargs['ip']+'"'])
             rc, out, err = self._iocage_admin(*args)
             if rc:
                 raise IocageError(err.strip())

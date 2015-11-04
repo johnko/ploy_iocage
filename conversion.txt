@@ -13,9 +13,9 @@ ez-                             ioc-
 EzjailError                     IocageError
 EzjailProxyInstance             IocageProxyInstance
 /usr/jails/%s                   /iocage/jails/%s/root
+create                          create
 
 # Not sure
 
-flavour                         template / package
-create
+flavour                         jailtype
 console -e                      ?
